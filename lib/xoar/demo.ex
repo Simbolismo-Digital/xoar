@@ -191,6 +191,7 @@ defmodule Xoar.Demo do
       case wme.value do
         %{from: from, to: to, source: src} ->
           IO.puts("  #{inspect(from)} → #{inspect(to)}  (#{src})")
+
         _ ->
           IO.puts("  #{inspect(wme.value)}")
       end

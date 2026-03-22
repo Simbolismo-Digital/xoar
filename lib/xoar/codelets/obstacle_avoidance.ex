@@ -37,7 +37,9 @@ defmodule Xoar.Codelets.ObstacleAvoidance do
           end)
 
         case dangerous do
-          [] -> []
+          [] ->
+            []
+
           nearby ->
             direction = calculate_evasion({px, py}, nearby)
 
@@ -63,12 +65,16 @@ defmodule Xoar.Codelets.ObstacleAvoidance do
         Workspace.put(:perception, WME.new(:drone, :position, new_pos))
 
         ts = System.monotonic_time(:millisecond)
-        Workspace.put(:episodic, WME.new(:"evade_#{ts}", :action, %{
-          from: {px, py},
-          to: new_pos,
-          source: :obstacle_avoidance,
-          time: ts
-        }))
+
+        Workspace.put(
+          :episodic,
+          WME.new(:"evade_#{ts}", :action, %{
+            from: {px, py},
+            to: new_pos,
+            source: :obstacle_avoidance,
+            time: ts
+          })
+        )
 
         {:ok, %{state | evasions_applied: state.evasions_applied + 1}}
 

@@ -34,9 +34,7 @@ defmodule Xoar.Application do
       {Registry, keys: :duplicate, name: Xoar.WorkspaceRegistry},
 
       # DecisionCycle must be up before codelets start proposing
-      {Xoar.DecisionCycle,
-       cycle_interval_ms: 100,
-       auto_run: false},
+      {Xoar.DecisionCycle, cycle_interval_ms: 100, auto_run: false},
 
       # Codelet processes — each starts its own loop or subscribes
       %{

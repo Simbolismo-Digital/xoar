@@ -42,12 +42,16 @@ defmodule Xoar.Codelets.Navigation do
         Workspace.put(:perception, WME.new(:drone, :position, new_pos))
 
         ts = System.monotonic_time(:millisecond)
-        Workspace.put(:episodic, WME.new(:"move_#{ts}", :action, %{
-          from: {px, py},
-          to: new_pos,
-          source: :navigation,
-          time: ts
-        }))
+
+        Workspace.put(
+          :episodic,
+          WME.new(:"move_#{ts}", :action, %{
+            from: {px, py},
+            to: new_pos,
+            source: :navigation,
+            time: ts
+          })
+        )
 
         {:ok, %{state | moves_applied: state.moves_applied + 1}}
 

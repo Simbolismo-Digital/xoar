@@ -58,13 +58,19 @@ defmodule Xoar.Codelets.Perception do
           # Update target distance
           case Workspace.get(:perception, :drone, :target) do
             %WME{value: target} ->
-              Workspace.put(:perception, WME.new(:drone, :target_distance, distance({px, py}, target)))
-            _ -> :ok
+              Workspace.put(
+                :perception,
+                WME.new(:drone, :target_distance, distance({px, py}, target))
+              )
+
+            _ ->
+              :ok
           end
 
           nearby
 
-        _ -> []
+        _ ->
+          []
       end
 
     {[], %{state | scan_count: state.scan_count + 1, last_detected: detected}}

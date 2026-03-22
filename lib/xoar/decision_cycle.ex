@@ -102,10 +102,11 @@ defmodule Xoar.DecisionCycle do
   # ── Decision ───────────────────────────────────────────────
 
   defp run_decision(%{proposal_buffer: []} = state) do
-    new_state = %{state |
-      cycle_count: state.cycle_count + 1,
-      last_decision: :no_proposals,
-      impasse_count: state.impasse_count + 1
+    new_state = %{
+      state
+      | cycle_count: state.cycle_count + 1,
+        last_decision: :no_proposals,
+        impasse_count: state.impasse_count + 1
     }
 
     {:no_proposals, new_state}
@@ -123,10 +124,11 @@ defmodule Xoar.DecisionCycle do
 
         route_apply(winner)
 
-        new_state = %{state |
-          proposal_buffer: [],
-          cycle_count: state.cycle_count + 1,
-          last_decision: winner.name
+        new_state = %{
+          state
+          | proposal_buffer: [],
+            cycle_count: state.cycle_count + 1,
+            last_decision: winner.name
         }
 
         {{:ok, winner.name}, new_state}
@@ -134,11 +136,12 @@ defmodule Xoar.DecisionCycle do
       :impasse ->
         Logger.debug("[Xoar] Cycle #{state.cycle_count}: IMPASSE")
 
-        new_state = %{state |
-          proposal_buffer: [],
-          cycle_count: state.cycle_count + 1,
-          last_decision: :impasse,
-          impasse_count: state.impasse_count + 1
+        new_state = %{
+          state
+          | proposal_buffer: [],
+            cycle_count: state.cycle_count + 1,
+            last_decision: :impasse,
+            impasse_count: state.impasse_count + 1
         }
 
         {:impasse, new_state}
@@ -152,8 +155,12 @@ defmodule Xoar.DecisionCycle do
       |> Enum.filter(&(&1.preference in [:acceptable, :best, :indifferent]))
 
     case candidates do
-      [] -> :impasse
-      [single] -> {:ok, single}
+      [] ->
+        :impasse
+
+      [single] ->
+        {:ok, single}
+
       multiple ->
         best = Enum.filter(multiple, &(&1.preference == :best))
 
