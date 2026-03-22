@@ -70,8 +70,18 @@ defmodule Xoar.Workspace do
   """
   def put(table, %Xoar.WME{} = wme) when table in @tables do
     key = {wme.id, wme.attribute}
-    :ets.insert(table, {key, wme})
-    broadcast(table, wme.id, wme.attribute)
+
+    changed? =
+      case :ets.lookup(table, key) do
+        [{^key, %Xoar.WME{value: old_value}}] -> old_value != wme.value
+        [] -> true
+      end
+
+    if changed? do
+      :ets.insert(table, {key, wme})
+      broadcast(table, wme.id, wme.attribute)
+    end
+
     :ok
   end
 
@@ -111,6 +121,12 @@ defmodule Xoar.Workspace do
   # ── Broadcast via Registry ────────────────────────────────
 
   defp broadcast(table, id, attribute) do
+    # dbg("Broadcasting")
+    # dbg(Process.info(self(), :current_stacktrace))
+    # dbg(table)
+    # dbg(id)
+    # dbg(attribute)
+
     Registry.dispatch(Xoar.WorkspaceRegistry, table, fn entries ->
       for {pid, _} <- entries do
         send(pid, {:wme_changed, table, id, attribute})
