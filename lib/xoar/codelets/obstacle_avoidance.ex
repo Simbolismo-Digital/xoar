@@ -2,19 +2,17 @@ defmodule Xoar.Codelets.ObstacleAvoidance do
   @moduledoc """
   Obstacle Avoidance Codelet — REACTIVE mode.
 
-  Subscribes to :perception. Sleeps until an obstacle WME is
-  written, then wakes up and proposes :evade with :best preference.
+  Subscribes to :perception, filtered to {:drone, :position} and
+  {:_, :obstacle} (any id with attribute :obstacle). Ignores
+  target_distance, target changes, and other irrelevant WMEs.
 
-  The competition with Navigation happens naturally:
-  Perception writes obstacle → BOTH Navigation and Avoidance
-  wake up from the same broadcast → both propose → DecisionCycle
-  resolves preferences → :best beats :worst → evade wins.
-
-  No coordination between codelets. Just independent processes
-  reacting to the same workspace change.
+  Perception writes obstacle → Avoidance's filter matches →
+  wakes up → proposes :evade with :best preference.
   """
 
-  use Xoar.Codelet, subscribe_to: [:perception]
+  use Xoar.Codelet, subscribe_to: [
+    perception: [{:drone, :position}, {:_, :obstacle}]
+  ]
 
   alias Xoar.{Workspace, WME, Operator}
 

@@ -126,7 +126,7 @@ defmodule Xoar.Demo do
           mode_str =
             case state.mode do
               :sensor -> "SENSOR   tick=#{state.tick_ms}ms  ticks=#{state.tick_count}"
-              :reactive -> "REACTIVE reactions=#{state.reactions}"
+              :reactive -> "REACTIVE reactions=#{state.reactions} skipped=#{state.skipped}"
             end
 
           IO.puts(
@@ -156,7 +156,7 @@ defmodule Xoar.Demo do
         mode_info =
           case state.mode do
             :sensor -> "(sensor, #{state.tick_count} ticks)"
-            :reactive -> "(reactive, #{state.reactions} reactions)"
+            :reactive -> "(reactive, #{state.reactions} reactions, #{state.skipped} skipped)"
           end
 
         IO.puts("  #{name} #{mode_info}:")

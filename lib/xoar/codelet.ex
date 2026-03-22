@@ -14,11 +14,14 @@ defmodule Xoar.Codelet do
 
   ## Reactive mode (subscribe)
 
-      use Xoar.Codelet, subscribe_to: [:perception]
+      use Xoar.Codelet, subscribe_to: [
+        perception: [{:drone, :position}, {:drone, :target}]
+      ]
 
   For cognitive codelets: navigation, attention, obstacle avoidance,
   learning. These react to workspace changes via PubSub.
-  They sleep until their mailbox gets a {:wme_changed, ...} message.
+  They sleep until their mailbox gets a {:wme_changed, ...} message
+  that matches one of their declared patterns. :_ is wildcard.
   No tick. No polling. Pure GWT broadcast semantics.
 
       ┌─────────────┐                         ┌──────────────┐
@@ -55,7 +58,8 @@ defmodule Xoar.Codelet do
   Read the workspace and propose operators.
 
   - In sensor mode: called every tick
-  - In reactive mode: called when a subscribed workspace table changes
+  - In reactive mode: called when a subscribed WME matching
+    the codelet's declared patterns changes
 
   Returns {operators, new_state}.
   """
@@ -65,6 +69,50 @@ defmodule Xoar.Codelet do
   @doc "Handle an apply message from the DecisionCycle."
   @callback handle_apply(Xoar.Operator.t(), state :: term()) ::
               {:ok | {:error, term()}, new_state :: term()}
+
+  @doc """
+  Parse `subscribe_to` into {tables, filters}.
+
+  Accepts two forms:
+
+      # Bare atoms — entire table, no filtering (backward compat)
+      subscribe_to: [:perception]
+      # → tables: [:perception], filters: %{perception: :any}
+
+      # Keyword — table + specific {id, attribute} patterns
+      # :_ is wildcard
+      subscribe_to: [perception: [{:drone, :position}, {:drone, :target}]]
+      # → tables: [:perception],
+      #   filters: %{perception: [{:drone, :position}, {:drone, :target}]}
+
+  PubSub subscription is always at table level (that's the Registry
+  granularity). Filters are checked in handle_info BEFORE calling
+  perceive_and_propose — irrelevant messages never wake the codelet.
+  """
+  def parse_subscriptions(subscribe_to) do
+    Enum.reduce(subscribe_to, {[], %{}}, fn
+      # bare atom → whole table, no filter
+      table, {tables, filters} when is_atom(table) ->
+        {[table | tables], Map.put(filters, table, :any)}
+
+      # keyword pair → table + patterns
+      {table, patterns}, {tables, filters} when is_atom(table) and is_list(patterns) ->
+        {[table | tables], Map.put(filters, table, patterns)}
+    end)
+    |> then(fn {tables, filters} -> {Enum.reverse(tables), filters} end)
+  end
+
+  @doc "Does {id, attribute} match any pattern for this table?"
+  def wme_matches?(:any, _id, _attribute), do: true
+
+  def wme_matches?(patterns, id, attribute) when is_list(patterns) do
+    Enum.any?(patterns, fn
+      {:_, :_} -> true
+      {:_, attr} -> attr == attribute
+      {ident, :_} -> ident == id
+      {ident, attr} -> ident == id and attr == attribute
+    end)
+  end
 
   defmacro __using__(opts) do
     tick_ms = Keyword.get(opts, :tick_ms, nil)
@@ -77,13 +125,16 @@ defmodule Xoar.Codelet do
         true -> raise "use Xoar.Codelet requires either tick_ms: N or subscribe_to: [tables]"
       end
 
+    {tables, filters} = Xoar.Codelet.parse_subscriptions(subscribe_to)
+
     quote do
       @behaviour Xoar.Codelet
       use GenServer
 
       @codelet_mode unquote(mode)
       @codelet_tick_ms unquote(tick_ms)
-      @codelet_subscriptions unquote(subscribe_to)
+      @codelet_tables unquote(tables)
+      @codelet_filters unquote(Macro.escape(filters))
 
       # ── Lifecycle ──────────────────────────────────────
 
@@ -112,10 +163,12 @@ defmodule Xoar.Codelet do
           module: __MODULE__,
           mode: @codelet_mode,
           tick_ms: @codelet_tick_ms,
-          subscriptions: @codelet_subscriptions,
+          tables: @codelet_tables,
+          filters: @codelet_filters,
           codelet_state: init_state(opts),
           tick_count: 0,
           reactions: 0,
+          skipped: 0,
           proposals_sent: 0
         }
 
@@ -124,7 +177,7 @@ defmodule Xoar.Codelet do
             schedule_tick(@codelet_tick_ms)
 
           :reactive ->
-            Enum.each(@codelet_subscriptions, fn table ->
+            Enum.each(@codelet_tables, fn table ->
               Xoar.Workspace.subscribe(table)
             end)
         end
@@ -157,20 +210,26 @@ defmodule Xoar.Codelet do
 
       @impl GenServer
       def handle_info({:wme_changed, table, id, attribute}, %{mode: :reactive} = state) do
-        {operators, new_codelet_state} = perceive_and_propose(state.codelet_state)
+        filter = Map.get(state.filters, table, :any)
 
-        if operators != [] do
-          Xoar.DecisionCycle.propose(operators)
+        if Xoar.Codelet.wme_matches?(filter, id, attribute) do
+          {operators, new_codelet_state} = perceive_and_propose(state.codelet_state)
+
+          if operators != [] do
+            Xoar.DecisionCycle.propose(operators)
+          end
+
+          new_state = %{
+            state
+            | codelet_state: new_codelet_state,
+              reactions: state.reactions + 1,
+              proposals_sent: state.proposals_sent + length(operators)
+          }
+
+          {:noreply, new_state}
+        else
+          {:noreply, %{state | skipped: state.skipped + 1}}
         end
-
-        new_state = %{
-          state
-          | codelet_state: new_codelet_state,
-            reactions: state.reactions + 1,
-            proposals_sent: state.proposals_sent + length(operators)
-        }
-
-        {:noreply, new_state}
       end
 
       # ── Receive apply from DecisionCycle ───────────────

@@ -2,17 +2,17 @@ defmodule Xoar.Codelets.Navigation do
   @moduledoc """
   Navigation Codelet — REACTIVE mode.
 
-  Subscribes to :perception table. Sleeps until Perception writes
-  a WME, then wakes up, reads the workspace, proposes :move.
-
-  No tick. No polling. Pure message-driven.
+  Subscribes to :perception table, filtered to {:drone, :position}
+  and {:drone, :target}. Ignores obstacle WMEs, target_distance, etc.
 
   When Perception writes drone position → this process receives
   {:wme_changed, :perception, :drone, :position} in its mailbox →
-  perceive_and_propose runs → sends :move proposal to DecisionCycle.
+  filter matches → perceive_and_propose runs → sends :move proposal.
   """
 
-  use Xoar.Codelet, subscribe_to: [:perception]
+  use Xoar.Codelet, subscribe_to: [
+    perception: [{:drone, :position}, {:drone, :target}]
+  ]
 
   alias Xoar.{Workspace, WME, Operator}
 
