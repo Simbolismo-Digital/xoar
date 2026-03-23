@@ -27,6 +27,7 @@ defmodule Xoar.DecisionCycle do
     GenServer.cast(__MODULE__, {:proposals, operators})
   end
 
+  def state, do: GenServer.call(__MODULE__, :state)
   def status, do: GenServer.call(__MODULE__, :status)
   def step, do: GenServer.call(__MODULE__, :step, 10_000)
   def pause, do: GenServer.cast(__MODULE__, :pause)
@@ -91,10 +92,13 @@ defmodule Xoar.DecisionCycle do
 
   @impl true
   def handle_call(:step, _from, state) do
-    # Give reactive codelets time to send proposals
-    Process.sleep(state.cycle_interval_ms)
     {result, new_state} = run_decision(state)
     {:reply, result, new_state}
+  end
+
+  @impl true
+  def handle_call(:state, _from, state) do
+    {:reply, state, state}
   end
 
   @impl true

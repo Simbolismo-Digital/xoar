@@ -29,9 +29,7 @@ defmodule Xoar.Application do
     Xoar.Workspace.init()
 
     Xoar.silence([:tick])
-    Logger.debug(
-      "[xoar:app] Silencing tick logs"
-    )
+    Logger.debug("[xoar:app] Silencing tick logs")
 
     Logger.debug(
       "[xoar:app] Building supervision tree: CodeletRegistry → WorkspaceRegistry → DecisionCycle → CodeletSupervisor"

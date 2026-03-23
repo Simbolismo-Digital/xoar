@@ -156,6 +156,20 @@ defmodule Xoar.Codelet do
         end
       end
 
+      def pause do
+        case pid() do
+          nil -> :not_running
+          _pid -> GenServer.call(via(), :pause)
+        end
+      end
+
+      def resume do
+        case pid() do
+          nil -> :not_running
+          _pid -> GenServer.call(via(), :resume)
+        end
+      end
+
       # ── Init ───────────────────────────────────────────
 
       @impl GenServer
@@ -170,7 +184,8 @@ defmodule Xoar.Codelet do
           tick_count: 0,
           reactions: 0,
           skipped: 0,
-          proposals_sent: 0
+          proposals_sent: 0,
+          paused: true
         }
 
         case @codelet_mode do
@@ -179,13 +194,17 @@ defmodule Xoar.Codelet do
               "[xoar:codelet] #{__MODULE__} INIT mode=sensor tick=#{@codelet_tick_ms}ms"
             )
 
-            schedule_tick(@codelet_tick_ms)
+          # schedule_tick(@codelet_tick_ms)
+          # Don't schedule_tick here — start paused.
+          # resume() will kick off the tick loop.
 
           :reactive ->
             Logger.debug(
               "[xoar:codelet] #{__MODULE__} INIT mode=reactive tables=#{inspect(@codelet_tables)} filters=#{inspect(@codelet_filters)}"
             )
 
+            # Subscribe always (just registers the PubSub key),
+            # but messages are dropped while paused.
             Enum.each(@codelet_tables, fn table ->
               Xoar.Workspace.subscribe(table)
             end)
@@ -197,8 +216,15 @@ defmodule Xoar.Codelet do
       # ── Sensor mode: tick ──────────────────────────────
 
       @impl GenServer
+      def handle_info(:tick, %{mode: :sensor, paused: true} = state) do
+        # Don't reschedule — resume() will restart the tick
+        {:noreply, state}
+      end
+
+      @impl GenServer
       def handle_info(:tick, %{mode: :sensor} = state) do
-        Logger.debug("[xoar:codelet] #{__MODULE__} TICK ##{state.tick_count + 1}", xoar: :tick)
+        # Logger.debug("[xoar:codelet] #{__MODULE__} TICK ##{state.tick_count + 1}", xoar: :tick)
+        Logger.debug("[xoar:codelet] #{__MODULE__} TICK ##{state.tick_count + 1}")
         {operators, new_codelet_state} = perceive_and_propose(state.codelet_state)
 
         if operators != [] do
@@ -221,6 +247,14 @@ defmodule Xoar.Codelet do
       end
 
       # ── Reactive mode: workspace change ────────────────
+
+      @impl GenServer
+      def handle_info(
+            {:wme_changed, _table, _id, _attribute},
+            %{mode: :reactive, paused: true} = state
+          ) do
+        {:noreply, state}
+      end
 
       @impl GenServer
       def handle_info({:wme_changed, table, id, attribute}, %{mode: :reactive} = state) do
@@ -270,6 +304,27 @@ defmodule Xoar.Codelet do
       @impl GenServer
       def handle_call(:get_state, _from, state) do
         {:reply, state, state}
+      end
+
+      @impl GenServer
+      def handle_call(:pause, _from, state) do
+        {:reply, :ok, %{state | paused: true}}
+      end
+
+      @impl GenServer
+      def handle_call(:resume, _from, %{paused: true, mode: :sensor} = state) do
+        schedule_tick(state.tick_ms)
+        {:reply, :ok, %{state | paused: false}}
+      end
+
+      @impl GenServer
+      def handle_call(:resume, _from, %{paused: true} = state) do
+        {:reply, :ok, %{state | paused: false}}
+      end
+
+      @impl GenServer
+      def handle_call(:resume, _from, state) do
+        {:reply, :ok, state}
       end
 
       # ── Helpers ────────────────────────────────────────

@@ -28,15 +28,17 @@ defmodule Xoar do
   @doc """
   Default log_format to project
   """
-  def log_format(level, message, _timestamp, metadata) do
+  def log_format(level, message, {{y, mo, d}, {h, mi, s, ms}}, metadata) do
     n = node()
 
-    case {level, metadata[:pid], metadata[:file], metadata[:line]} do
-      {"", p, f, l} when is_pid(p) and is_list(f) and is_integer(l) ->
-        "[#{level}] #{n} pid=#{inspect(p)} #{f}:#{l} #{message}\n"
+    ts = :io_lib.format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B.~3..0B", [y, mo, d, h, mi, s, ms])
+
+    case {metadata[:pid], metadata[:file], metadata[:line]} do
+      {p, f, l} when is_pid(p) and is_list(f) and is_integer(l) ->
+        "[#{level}] #{ts} #{n} pid=#{inspect(p)} #{f}:#{l} #{message}\n"
 
       _ ->
-        "[#{level}] #{n} #{message}\n"
+        "[#{level}] #{ts} #{n} #{message}\n"
     end
   end
 

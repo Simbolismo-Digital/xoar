@@ -62,6 +62,8 @@ defmodule Xoar.Demo do
 
   def step do
     before = get_position()
+    # Simulate cycle interval
+    Process.sleep(DecisionCycle.state()[:cycle_interval_ms])
     result = DecisionCycle.step()
     after_pos = get_position()
     status = DecisionCycle.status()
@@ -87,6 +89,10 @@ defmodule Xoar.Demo do
   end
 
   def run(max_cycles \\ 50) do
+    # Resume codelets in case they were paused from a previous run
+    Enum.each(@codelets, fn mod -> mod.resume() end)
+
+    IO.puts("Running...\n")
     setup()
 
     target =
@@ -95,17 +101,23 @@ defmodule Xoar.Demo do
         _ -> {8, 8}
       end
 
-    IO.puts("Running...\n")
+    result =
+      Enum.reduce_while(1..max_cycles, nil, fn _i, _acc ->
+        if get_position() == target do
+          IO.puts("\n✓ Target reached in #{DecisionCycle.status().cycle_count} cycles!")
+          {:halt, :arrived}
+        else
+          step()
+          {:cont, nil}
+        end
+      end)
 
-    Enum.reduce_while(1..max_cycles, nil, fn _i, _acc ->
-      if get_position() == target do
-        IO.puts("\n✓ Target reached in #{DecisionCycle.status().cycle_count} cycles!")
-        {:halt, :arrived}
-      else
-        step()
-        {:cont, nil}
-      end
-    end)
+    IO.puts("Pausing...\n")
+
+    # Pause all codelets so sensor ticks stop after the demo ends
+    Enum.each(@codelets, fn mod -> mod.pause() end)
+
+    result
   end
 
   def processes do

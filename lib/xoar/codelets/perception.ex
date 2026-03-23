@@ -82,7 +82,8 @@ defmodule Xoar.Codelets.Perception do
           nearby
 
         _ ->
-          Logger.debug("[xoar:perception] No drone position in workspace, skipping scan", xoar: :tick)
+          # Logger.debug("[xoar:perception] No drone position in workspace, skipping scan", xoar: :tick)
+          Logger.debug("[xoar:perception] No drone position in workspace, skipping scan")
           []
       end
 
