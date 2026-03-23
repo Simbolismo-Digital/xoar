@@ -23,12 +23,15 @@ defmodule Xoar.Workspace do
 
   @tables [:perception, :procedural, :episodic]
 
+  require Logger
+
   # ── Lifecycle ──────────────────────────────────────────────
 
   def init do
     Enum.each(@tables, fn name ->
       if :ets.whereis(name) == :undefined do
         :ets.new(name, [:named_table, :set, :public, read_concurrency: true])
+        Logger.debug("[xoar:workspace] ETS table created: #{name}")
       end
     end)
 
@@ -54,6 +57,7 @@ defmodule Xoar.Workspace do
       Workspace.subscribe(:perception)
   """
   def subscribe(table) when table in @tables do
+    Logger.debug("[xoar:workspace] #{inspect(self())} subscribed to :#{table}")
     Registry.register(Xoar.WorkspaceRegistry, table, [])
     :ok
   end
@@ -78,8 +82,16 @@ defmodule Xoar.Workspace do
       end
 
     if changed? do
+      Logger.debug(
+        "[xoar:workspace] PUT :#{table} #{wme.id}.#{wme.attribute} = #{inspect(wme.value)}"
+      )
+
       :ets.insert(table, {key, wme})
       broadcast(table, wme.id, wme.attribute)
+    else
+      Logger.debug(
+        "[xoar:workspace] PUT :#{table} #{wme.id}.#{wme.attribute} unchanged, skipping broadcast"
+      )
     end
 
     :ok
@@ -87,6 +99,7 @@ defmodule Xoar.Workspace do
 
   @doc "Remove a WME and broadcast the deletion."
   def delete(table, id, attribute) when table in @tables do
+    Logger.debug("[xoar:workspace] DELETE :#{table} #{id}.#{attribute}")
     :ets.delete(table, {id, attribute})
     broadcast(table, id, attribute)
     :ok
@@ -121,13 +134,11 @@ defmodule Xoar.Workspace do
   # ── Broadcast via Registry ────────────────────────────────
 
   defp broadcast(table, id, attribute) do
-    # dbg("Broadcasting")
-    # dbg(Process.info(self(), :current_stacktrace))
-    # dbg(table)
-    # dbg(id)
-    # dbg(attribute)
-
     Registry.dispatch(Xoar.WorkspaceRegistry, table, fn entries ->
+      Logger.debug(
+        "[xoar:workspace] BROADCAST :#{table} #{id}.#{attribute} → #{length(entries)} subscriber(s)"
+      )
+
       for {pid, _} <- entries do
         send(pid, {:wme_changed, table, id, attribute})
       end

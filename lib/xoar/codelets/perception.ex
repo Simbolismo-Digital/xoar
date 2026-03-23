@@ -19,6 +19,7 @@ defmodule Xoar.Codelets.Perception do
   """
 
   use Xoar.Codelet, tick_ms: 40
+  require Logger
 
   alias Xoar.{Workspace, WME}
 
@@ -48,6 +49,14 @@ defmodule Xoar.Codelets.Perception do
               distance({px, py}, {ox, oy}) <= @detection_range
             end)
 
+          if nearby != [] do
+            Logger.debug(
+              "[xoar:perception] Scan at #{inspect({px, py})}: detected #{length(nearby)} obstacle(s) #{inspect(nearby)}"
+            )
+          else
+            Logger.debug("[xoar:perception] Scan at #{inspect({px, py})}: clear")
+          end
+
           # Write detections → triggers broadcast to reactive codelets
           nearby
           |> Enum.with_index()
@@ -58,9 +67,12 @@ defmodule Xoar.Codelets.Perception do
           # Update target distance
           case Workspace.get(:perception, :drone, :target) do
             %WME{value: target} ->
+              dist = distance({px, py}, target)
+              Logger.debug("[xoar:perception] Target distance: #{Float.round(dist, 2)}")
+
               Workspace.put(
                 :perception,
-                WME.new(:drone, :target_distance, distance({px, py}, target))
+                WME.new(:drone, :target_distance, dist)
               )
 
             _ ->
@@ -70,6 +82,7 @@ defmodule Xoar.Codelets.Perception do
           nearby
 
         _ ->
+          Logger.debug("[xoar:perception] No drone position in workspace, skipping scan", xoar: :tick)
           []
       end
 

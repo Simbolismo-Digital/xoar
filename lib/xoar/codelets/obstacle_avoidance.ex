@@ -10,9 +10,12 @@ defmodule Xoar.Codelets.ObstacleAvoidance do
   wakes up → proposes :evade with :best preference.
   """
 
-  use Xoar.Codelet, subscribe_to: [
-    perception: [{:drone, :position}, {:_, :obstacle}]
-  ]
+  use Xoar.Codelet,
+    subscribe_to: [
+      perception: [{:drone, :position}, {:_, :obstacle}]
+    ]
+
+  require Logger
 
   alias Xoar.{Workspace, WME, Operator}
 
@@ -36,10 +39,18 @@ defmodule Xoar.Codelets.ObstacleAvoidance do
 
         case dangerous do
           [] ->
+            Logger.debug(
+              "[xoar:avoidance] No threats within range #{@danger_range} of #{inspect({px, py})}"
+            )
+
             []
 
           nearby ->
             direction = calculate_evasion({px, py}, nearby)
+
+            Logger.debug(
+              "[xoar:avoidance] THREAT! #{length(nearby)} obstacle(s) near #{inspect({px, py})}, evasion dir=#{inspect(direction)}"
+            )
 
             [
               Operator.new(:evade, __MODULE__,
@@ -49,7 +60,9 @@ defmodule Xoar.Codelets.ObstacleAvoidance do
             ]
         end
       else
-        _ -> []
+        _ ->
+          Logger.debug("[xoar:avoidance] No drone position available")
+          []
       end
 
     {operators, %{state | evasions_proposed: state.evasions_proposed + length(operators)}}
@@ -60,6 +73,11 @@ defmodule Xoar.Codelets.ObstacleAvoidance do
     case Workspace.get(:perception, :drone, :position) do
       %WME{value: {px, py}} ->
         new_pos = {px + dx, py + dy}
+
+        Logger.debug(
+          "[xoar:avoidance] APPLY :evade #{inspect({px, py})} → #{inspect(new_pos)} (dir=#{inspect({dx, dy})})"
+        )
+
         Workspace.put(:perception, WME.new(:drone, :position, new_pos))
 
         ts = System.monotonic_time(:millisecond)

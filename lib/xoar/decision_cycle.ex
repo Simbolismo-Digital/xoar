@@ -56,6 +56,11 @@ defmodule Xoar.DecisionCycle do
 
   @impl true
   def handle_cast({:proposals, operators}, state) do
+    Logger.debug(
+      "[xoar:decide] Received #{length(operators)} proposal(s): " <>
+        inspect(Enum.map(operators, fn op -> {op.name, op.source, op.preference} end))
+    )
+
     {:noreply, %{state | proposal_buffer: state.proposal_buffer ++ operators}}
   end
 
@@ -72,7 +77,10 @@ defmodule Xoar.DecisionCycle do
   end
 
   @impl true
-  def handle_info(:decide, %{running: false} = state), do: {:noreply, state}
+  def handle_info(:decide, %{running: false} = state) do
+    Logger.debug("[xoar:decide] Tick skipped (paused)")
+    {:noreply, state}
+  end
 
   @impl true
   def handle_info(:decide, state) do
@@ -102,6 +110,10 @@ defmodule Xoar.DecisionCycle do
   # ── Decision ───────────────────────────────────────────────
 
   defp run_decision(%{proposal_buffer: []} = state) do
+    Logger.debug(
+      "[xoar:decide] Cycle ##{state.cycle_count}: no proposals (impasse ##{state.impasse_count + 1})"
+    )
+
     new_state = %{
       state
       | cycle_count: state.cycle_count + 1,
@@ -149,33 +161,65 @@ defmodule Xoar.DecisionCycle do
   end
 
   defp decide(proposals) do
+    rejected = Enum.filter(proposals, &(&1.preference == :reject))
+
+    if rejected != [] do
+      Logger.debug("[xoar:decide] Rejected: #{inspect(Enum.map(rejected, & &1.name))}")
+    end
+
     candidates =
       proposals
       |> Enum.reject(&(&1.preference == :reject))
       |> Enum.filter(&(&1.preference in [:acceptable, :best, :indifferent]))
 
+    Logger.debug(
+      "[xoar:decide] Candidates after filter: #{inspect(Enum.map(candidates, fn op -> {op.name, op.preference} end))}"
+    )
+
     case candidates do
       [] ->
+        Logger.debug("[xoar:decide] No viable candidates → IMPASSE")
         :impasse
 
       [single] ->
+        Logger.debug("[xoar:decide] Single candidate → winner :#{single.name}")
         {:ok, single}
 
       multiple ->
         best = Enum.filter(multiple, &(&1.preference == :best))
 
         case best do
-          [one] -> {:ok, one}
-          [] -> {:ok, Enum.random(multiple)}
-          _tie -> :impasse
+          [one] ->
+            Logger.debug("[xoar:decide] :best preference → winner :#{one.name}")
+            {:ok, one}
+
+          [] ->
+            winner = Enum.random(multiple)
+
+            Logger.debug(
+              "[xoar:decide] No :best, random pick from #{length(multiple)} → winner :#{winner.name}"
+            )
+
+            {:ok, winner}
+
+          _tie ->
+            Logger.debug("[xoar:decide] Multiple :best → tie IMPASSE")
+            :impasse
         end
     end
   end
 
   defp route_apply(%Operator{source: source_module} = operator) do
     case source_module.pid() do
-      nil -> Logger.warning("[Xoar] Cannot route: #{inspect(source_module)} not running")
-      pid -> GenServer.cast(pid, {:apply_operator, operator})
+      nil ->
+        Logger.warning("[Xoar] Cannot route: #{inspect(source_module)} not running")
+
+      pid ->
+        Logger.debug(
+          "[xoar:decide] Routing :#{operator.name} → #{inspect(source_module)} (#{inspect(pid)})"
+        )
+
+        GenServer.cast(pid, {:apply_operator, operator})
     end
   end
 

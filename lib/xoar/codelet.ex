@@ -130,6 +130,7 @@ defmodule Xoar.Codelet do
     quote do
       @behaviour Xoar.Codelet
       use GenServer
+      require Logger
 
       @codelet_mode unquote(mode)
       @codelet_tick_ms unquote(tick_ms)
@@ -174,9 +175,17 @@ defmodule Xoar.Codelet do
 
         case @codelet_mode do
           :sensor ->
+            Logger.debug(
+              "[xoar:codelet] #{__MODULE__} INIT mode=sensor tick=#{@codelet_tick_ms}ms"
+            )
+
             schedule_tick(@codelet_tick_ms)
 
           :reactive ->
+            Logger.debug(
+              "[xoar:codelet] #{__MODULE__} INIT mode=reactive tables=#{inspect(@codelet_tables)} filters=#{inspect(@codelet_filters)}"
+            )
+
             Enum.each(@codelet_tables, fn table ->
               Xoar.Workspace.subscribe(table)
             end)
@@ -189,9 +198,14 @@ defmodule Xoar.Codelet do
 
       @impl GenServer
       def handle_info(:tick, %{mode: :sensor} = state) do
+        Logger.debug("[xoar:codelet] #{__MODULE__} TICK ##{state.tick_count + 1}", xoar: :tick)
         {operators, new_codelet_state} = perceive_and_propose(state.codelet_state)
 
         if operators != [] do
+          Logger.debug(
+            "[xoar:codelet] #{__MODULE__} proposing #{length(operators)} operator(s): #{inspect(Enum.map(operators, & &1.name))}"
+          )
+
           Xoar.DecisionCycle.propose(operators)
         end
 
@@ -213,9 +227,14 @@ defmodule Xoar.Codelet do
         filter = Map.get(state.filters, table, :any)
 
         if Xoar.Codelet.wme_matches?(filter, id, attribute) do
+          Logger.debug("[xoar:codelet] #{__MODULE__} WAKEUP on :#{table} #{id}.#{attribute}")
           {operators, new_codelet_state} = perceive_and_propose(state.codelet_state)
 
           if operators != [] do
+            Logger.debug(
+              "[xoar:codelet] #{__MODULE__} proposing #{length(operators)} operator(s): #{inspect(Enum.map(operators, & &1.name))}"
+            )
+
             Xoar.DecisionCycle.propose(operators)
           end
 
@@ -228,6 +247,10 @@ defmodule Xoar.Codelet do
 
           {:noreply, new_state}
         else
+          Logger.debug(
+            "[xoar:codelet] #{__MODULE__} SKIP :#{table} #{id}.#{attribute} (filter mismatch)"
+          )
+
           {:noreply, %{state | skipped: state.skipped + 1}}
         end
       end
@@ -236,6 +259,10 @@ defmodule Xoar.Codelet do
 
       @impl GenServer
       def handle_cast({:apply_operator, operator}, state) do
+        Logger.debug(
+          "[xoar:codelet] #{__MODULE__} APPLY :#{operator.name} params=#{inspect(operator.params)}"
+        )
+
         {_result, new_codelet_state} = handle_apply(operator, state.codelet_state)
         {:noreply, %{state | codelet_state: new_codelet_state}}
       end

@@ -10,9 +10,12 @@ defmodule Xoar.Codelets.Navigation do
   filter matches → perceive_and_propose runs → sends :move proposal.
   """
 
-  use Xoar.Codelet, subscribe_to: [
-    perception: [{:drone, :position}, {:drone, :target}]
-  ]
+  use Xoar.Codelet,
+    subscribe_to: [
+      perception: [{:drone, :position}, {:drone, :target}]
+    ]
+
+  require Logger
 
   alias Xoar.{Workspace, WME, Operator}
 
@@ -39,6 +42,11 @@ defmodule Xoar.Codelets.Navigation do
     case Workspace.get(:perception, :drone, :position) do
       %WME{value: {px, py}} ->
         new_pos = {px + dx, py + dy}
+
+        Logger.debug(
+          "[xoar:navigation] APPLY :move #{inspect({px, py})} → #{inspect(new_pos)} (dir=#{inspect({dx, dy})})"
+        )
+
         Workspace.put(:perception, WME.new(:drone, :position, new_pos))
 
         ts = System.monotonic_time(:millisecond)
@@ -64,7 +72,10 @@ defmodule Xoar.Codelets.Navigation do
 
   # ── Proposal logic ─────────────────────────────────────────
 
-  defp propose_movement({px, py}, {tx, ty}) when px == tx and py == ty, do: []
+  defp propose_movement({px, py}, {tx, ty}) when px == tx and py == ty do
+    Logger.debug("[xoar:navigation] Already at target #{inspect({tx, ty})}, no proposal")
+    []
+  end
 
   defp propose_movement({px, py}, {tx, ty}) do
     dx = sign(tx - px)
@@ -74,7 +85,17 @@ defmodule Xoar.Codelets.Navigation do
     intended = {px + dx, py + dy}
 
     preference =
-      if obstacle_at?(obstacles, intended), do: :worst, else: :acceptable
+      if obstacle_at?(obstacles, intended) do
+        Logger.debug(
+          "[xoar:navigation] Obstacle at intended #{inspect(intended)}, preference=:worst"
+        )
+
+        :worst
+      else
+        :acceptable
+      end
+
+    Logger.debug("[xoar:navigation] Proposing :move dir=#{inspect({dx, dy})} pref=#{preference}")
 
     [
       Operator.new(:move, __MODULE__,

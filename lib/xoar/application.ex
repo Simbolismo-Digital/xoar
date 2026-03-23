@@ -21,10 +21,21 @@ defmodule Xoar.Application do
   """
 
   use Application
+  require Logger
 
   @impl true
   def start(_type, _args) do
+    Logger.debug("[xoar:app] Workspace.init()")
     Xoar.Workspace.init()
+
+    Xoar.silence([:tick])
+    Logger.debug(
+      "[xoar:app] Silencing tick logs"
+    )
+
+    Logger.debug(
+      "[xoar:app] Building supervision tree: CodeletRegistry → WorkspaceRegistry → DecisionCycle → CodeletSupervisor"
+    )
 
     children = [
       # Process name registry (unique keys)
@@ -53,6 +64,8 @@ defmodule Xoar.Application do
       }
     ]
 
-    Supervisor.start_link(children, strategy: :rest_for_one, name: Xoar.Supervisor)
+    result = Supervisor.start_link(children, strategy: :rest_for_one, name: Xoar.Supervisor)
+    Logger.debug("[xoar:app] Supervisor started: #{inspect(result)}")
+    result
   end
 end

@@ -24,4 +24,31 @@ defmodule Xoar do
       iex -S mix
       iex> Xoar.Demo.run()
   """
+
+  @doc """
+  Default log_format to project
+  """
+  def log_format(level, message, _timestamp, metadata) do
+    n = node()
+
+    case {level, metadata[:pid], metadata[:file], metadata[:line]} do
+      {"", p, f, l} when is_pid(p) and is_list(f) and is_integer(l) ->
+        "[#{level}] #{n} pid=#{inspect(p)} #{f}:#{l} #{message}\n"
+
+      _ ->
+        "[#{level}] #{n} #{message}\n"
+    end
+  end
+
+  def silence(tags),
+    do:
+      :logger.add_primary_filter(:xoar_filter, {
+        fn
+          %{meta: %{xoar: t}}, blocked -> if t in blocked, do: :stop, else: :ignore
+          _, _ -> :ignore
+        end,
+        List.wrap(tags)
+      })
+
+  def unsilence, do: :logger.remove_primary_filter(:xoar_filter)
 end
