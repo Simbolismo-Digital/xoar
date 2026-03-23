@@ -77,6 +77,9 @@ iex -S mix
 # Run the full demo
 Xoar.Demo.run()
 
+# Run only 5 turns
+Xoar.Demo.run(5)
+
 # Or step through manually
 Xoar.Demo.setup()              # drone at {0,0}, target at {8,8}
 Xoar.Demo.step()               # one decision cycle
